@@ -50,6 +50,9 @@ def mainPage() {
     dynamicPage(name: "mainPage", title: "<b>Dog Feeding &amp; Walk Reminder</b>", install: true, uninstall: true) {
         section {
             paragraph "<b>Current status:</b> ${state.fedStatus ?: 'unknown'}"
+            if (state.lastAnnounce) {
+                paragraph "<b>Last announcement:</b> ${state.lastAnnounce}<br>${state.lastAnnounceDetail ?: ''}"
+            }
         }
         section("<b>0. The dog</b>") {
             input "dogName", "text",
@@ -130,9 +133,11 @@ def mainPage() {
             input "useAnnouncement", "bool",
                   title: "Prefer playAnnouncement() when a device supports it (Echo Speaks)", defaultValue: true
             input "speechVolume", "number",
-                  title: "Speak at this volume and restore what was playing (blank = leave volume alone)",
-                  required: false
+                  title: "Speak at this volume and restore what was playing (0 = do not touch the volume)",
+                  defaultValue: 35, required: false
             paragraph "Picking the same speaker in more than one field is harmless — it is only spoken to once."
+            input "btnTestSpeech", "button", title: "🔊 Test speech now"
+            paragraph speakerReport()
             input "createAlertDevices", "bool",
                   title: "<b>Create three virtual contact sensors for Alexa Routines</b> — one per phrase " +
                          "(first walk, second walk, feed the dog). Share them to the Amazon Echo Skill, then " +
@@ -471,38 +476,105 @@ private List speakerPool() {
 }
 
 /**
- * Speak on one device using the best command it actually has. Drivers disagree
- * wildly here: Sonos Player offers playTextAndRestore(text, volume) as a custom
- * command (it restores whatever was playing), Echo Speaks offers
- * playAnnouncement()/setVolumeSpeakAndRestore(), and the bare SpeechSynthesis
- * contract only guarantees speak().
+ * Speak on one device using the best command it actually has, and report back
+ * which one was used. Drivers disagree wildly here: Sonos Player offers
+ * playTextAndRestore(text, volume) as a custom command (it restores whatever was
+ * playing), Echo Speaks offers playAnnouncement()/setVolumeSpeakAndRestore(), and
+ * the bare SpeechSynthesis contract only guarantees speak().
+ *
+ * Returns a short description of what happened, for the app page and the log.
  */
-private void speakOn(def d, String msg) {
+private String speakOn(def d, String msg) {
     try {
-        Integer vol = (speechVolume != null) ? speechVolume as Integer : null
-        if (vol != null && d.hasCommand("playTextAndRestore")) {
+        Integer vol = volumeSetting()
+        if (vol && d.hasCommand("playTextAndRestore")) {
             d.playTextAndRestore(msg, vol)
-        } else if (vol != null && d.hasCommand("setVolumeSpeakAndRestore")) {
+            return "playTextAndRestore at volume ${vol}"
+        } else if (vol && d.hasCommand("setVolumeSpeakAndRestore")) {
             d.setVolumeSpeakAndRestore(vol, msg)
+            return "setVolumeSpeakAndRestore at volume ${vol}"
         } else if (useAnnouncement && d.hasCommand("playAnnouncement")) {
             d.playAnnouncement(msg)
-        } else if (d.hasCommand("playTextAndRestore")) {
-            d.playTextAndRestore(msg)
+            return "playAnnouncement"
         } else if (d.hasCommand("playText")) {
             d.playText(msg)
+            return "playText"
         } else if (d.hasCommand("speak")) {
             d.speak(msg)
-        } else {
-            log.warn "${d.displayName} has no usable speech command — skipped."
+            return "speak"
         }
+        log.warn "${d.displayName} has no usable speech command — skipped."
+        return "NO USABLE SPEECH COMMAND"
     } catch (e) {
         log.warn "Speech failed on ${d.displayName}: ${e.message}"
+        return "FAILED — ${e.message}"
     }
+}
+
+/** Configured volume, or the 35 default. 0 means "do not touch the volume". */
+private Integer volumeSetting() {
+    Integer vol = (speechVolume != null) ? (speechVolume as Integer) : 35
+    return vol > 0 ? vol : null
+}
+
+// -------------------------------------------------------- speech self-test
+
+def appButtonHandler(String btn) {
+    if (btn == "btnTestSpeech") testSpeech()
+}
+
+private void testSpeech() {
+    String msg = render(firstMessage ?: "Time to take %dog% out.")
+    List pool = speakerPool()
+    if (!pool) {
+        state.speechTest = "No speakers selected — nothing to test."
+        log.warn "Speech test: no speakers selected."
+        return
+    }
+    List lines = pool.collect { d -> "&bull; <b>${d.displayName}</b> — ${speakOn(d, msg)}${activityNote(d)}" }
+    state.speechTest = "Tested at ${nowText()} with \"${msg}\"<br>${lines.join('<br>')}"
+    log.info "Speech test on ${pool.size()} speaker(s): ${lines.join(' | ')}"
+}
+
+/**
+ * A speaker that has never reported, or has not reported in days, is almost
+ * certainly why an announcement was silent — the command succeeds and nothing
+ * comes out. Worth showing right next to the picker.
+ */
+private String activityNote(def d) {
+    try {
+        Date la = d.getLastActivity()
+        if (la == null) return " <span style='color:red'>(no activity ever recorded — is this device alive?)</span>"
+        Long days = ((now() - la.time) / 86400000L) as Long
+        if (days >= 2) {
+            return " <span style='color:red'>(last activity ${days} days ago — probably offline)</span>"
+        }
+        return " <span style='color:gray'>(last active ${la.format("MMM d h:mm a", location.timeZone)})</span>"
+    } catch (ignored) {
+        return ""
+    }
+}
+
+private String speakerReport() {
+    List pool = speakerPool()
+    String head = pool ? "<b>Selected speakers:</b><br>" +
+                         pool.collect { "&bull; ${it.displayName}${activityNote(it)}" }.join("<br>")
+                       : "<span style='color:red'><b>No speakers selected</b> — announcements will be silent.</span>"
+    return state.speechTest ? "${head}<br><br><b>Last test:</b><br>${state.speechTest}" : head
+}
+
+private String nowText() {
+    return new Date().format("EEE MMM d, h:mm:ss a", location.timeZone)
 }
 
 private void announce(String msg, def contacts, def switches) {
     log.info "Announce: ${msg}"
-    speakerPool().each { d -> speakOn(d, msg) }
+    List pool = speakerPool()
+    if (!pool) log.warn "Nothing to speak on — no speakers selected in section 5."
+    List results = pool.collect { d -> "&bull; <b>${d.displayName}</b> — ${speakOn(d, msg)}${activityNote(d)}" }
+    state.lastAnnounce = "${nowText()} — \"${msg}\""
+    state.lastAnnounceDetail = results.join("<br>")
+    if (results) log.info "Spoke on ${pool.size()} speaker(s): ${results.join(' | ')}"
     notifyDevices?.each { it.deviceNotification(msg) }
     contacts?.each { d ->
         if (d.hasCommand("open")) d.open()

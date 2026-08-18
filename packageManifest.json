@@ -1,10 +1,10 @@
 {
     "packageName": "Dog Feeding & Walk Reminder",
     "author": "drbbton",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "minimumHEVersion": "2.3.4",
     "dateReleased": "2026-08-18",
-    "releaseNotes": "1.0.1 - select Sonos by MusicPlayer capability. The Sonos Player driver does not declare AudioNotification, so it never appeared in the audio-notification picker; speech now goes through one deduplicated speaker list that picks the best command each device actually has (playTextAndRestore / playAnnouncement / setVolumeSpeakAndRestore / playText / speak).\n\n1.0.0 - initial release.",
+    "releaseNotes": "1.1.0 - Test speech now button, plus diagnostics for silent announcements. Each selected speaker is listed with its last-activity time and flagged in red when it has never reported or has been quiet for days, which is the usual reason an announcement is silent. The app page also shows the last announcement, its text, and which command was used per speaker. Speech volume now defaults to 35 (0 = do not touch the volume).\n\n1.0.1 - select Sonos by MusicPlayer capability; unified speech dispatch.\n\n1.0.0 - initial release.",
     "documentationLink": "https://github.com/drbbton/HubitatDogFeeding/blob/main/README.md",
     "communityLink": "https://github.com/drbbton/HubitatDogFeeding",
     "apps": [
@@ -15,7 +15,7 @@
             "location": "https://raw.githubusercontent.com/drbbton/HubitatDogFeeding/main/dogfeedingapp.groovy",
             "required": true,
             "oauth": false,
-            "version": "1.0.1"
+            "version": "1.1.0"
         }
     ],
     "drivers": [
