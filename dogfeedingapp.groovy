@@ -2,27 +2,29 @@
  *  Dog Feeding & Walk Reminder
  *
  *  Hubitat port of the webCoRE "Dog Fed Reminder" + "Dog Fed Notification" pistons,
- *  plus Alexa announcements to take the dog out after he eats.
+ *  plus spoken announcements to take the dog out after he eats.
  *
  *  What it does
- *    1. Watches a bowl sensor (tilt / vibration / contact) or a virtual "Dog Fed"
- *       switch and records WHEN the dog was fed, as a human-readable status string
- *       ("Fed on Tuesday at 7:36 AM"). Status is published to the app label, an
- *       optional Hub Variable (for dashboards), and an optional switch/contact.
- *    2. Resets the status twice a day ("Dogs have not had breakfast" at 12:01 AM,
- *       "Dogs have not had dinner" at 12:01 PM) so the string always says what is
- *       still owed.
- *    3. Nags at configurable meal times (7:30 AM / 6:00 PM) if that meal has not
- *       been fed. If nobody is home it defers and nags when someone gets back.
- *    4. After a feeding, announces on Alexa (or any TTS speaker) at two
- *       configurable offsets — default +15 minutes and +60 minutes — to take the
- *       dog out. Optionally cancelled if the dog is let out first.
+ *    1. Watches a bowl sensor (tilt / vibration / three-axis) or a virtual "Dog
+ *       Fed" switch and records WHEN he was fed, as a message-template status
+ *       string ("Rex was fed on Tuesday at 7:36 AM"). Published to the app label,
+ *       a companion child device, and optionally a Hub Variable.
+ *    2. Resets the status twice a day (default 12:01 AM / 12:01 PM) so the string
+ *       always says which meal is still owed.
+ *    3. Nags at configurable meal times if that meal has not been fed. If nobody
+ *       is home it defers and nags when someone gets back.
+ *    4. After a feeding, announces at two configurable offsets — default
+ *       +15 minutes and +60 minutes. Cancelled when he actually goes out
+ *       (motion, door contact, switch, or the child device's button).
  *
- *  Alexa options
- *    - Echo Speaks devices: picked up as TTS speakers; the app speaks the real
- *      message text (playAnnouncement() used when the device supports it).
- *    - No Echo Speaks: pick a virtual contact/switch per reminder and build an
- *      Alexa Routine ("When contact opens -> Alexa says ...").
+ *  Speech options, best first
+ *    - Sonos / any audioNotification speaker: local, no cloud login, speaks the
+ *      real text and restores whatever was playing. Nothing to re-authorize.
+ *    - Echo Speaks devices: also speak the real text, but depend on an Amazon
+ *      cookie that expires periodically.
+ *    - Amazon Echo Skill + Alexa Routines: the app can create three virtual
+ *      contact sensors (one per phrase); each Routine says a fixed phrase.
+ *      Nothing to maintain, but the text cannot be dynamic.
  */
 
 definition(
@@ -112,23 +114,36 @@ def mainPage() {
                          "walking through the garage while the bowl is still full from cancelling the reminders)",
                   defaultValue: 5, required: true
         }
-        section("<b>5. Alexa / speech output</b>") {
+        section("<b>5. Speech output</b>") {
+            input "audioDevices", "capability.audioNotification",
+                  title: "<b>Sonos / audio-notification speakers</b> — spoken locally, no cloud login, " +
+                         "interrupts music and restores it",
+                  multiple: true, required: false
             input "speechDevices", "capability.speechSynthesis",
-                  title: "TTS speakers — Echo Speaks devices, Sonos, Chromecast, etc.", multiple: true, required: false
+                  title: "TTS speakers — Echo Speaks devices, Chromecast, etc.", multiple: true, required: false
             input "useAnnouncement", "bool",
                   title: "Use playAnnouncement() when the device supports it (Echo Speaks)", defaultValue: true
             input "speechVolume", "number",
                   title: "Speak at this volume and restore (blank = leave volume alone)", required: false
+            input "createAlertDevices", "bool",
+                  title: "<b>Create three virtual contact sensors for Alexa Routines</b> — one per phrase " +
+                         "(first walk, second walk, feed the dog). Share them to the Amazon Echo Skill, then " +
+                         "build a Routine on each: <i>contact opens &rarr; Alexa Says</i>. No cloud login, " +
+                         "nothing to add by hand.",
+                  defaultValue: false
+            if (createAlertDevices) {
+                paragraph alertDeviceSummary()
+            }
             input "firstAlertContacts", "capability.contactSensor",
-                  title: "First-announcement virtual CONTACT(s) to open — for an Alexa Routine", multiple: true, required: false
+                  title: "Extra first-announcement CONTACT(s) to open (optional)", multiple: true, required: false
             input "firstAlertSwitches", "capability.switch",
                   title: "First-announcement virtual SWITCH(es) to turn on — for Alexa/HomeKit", multiple: true, required: false
             input "secondAlertContacts", "capability.contactSensor",
-                  title: "Second-announcement virtual CONTACT(s) to open", multiple: true, required: false
+                  title: "Extra second-announcement CONTACT(s) to open (optional)", multiple: true, required: false
             input "secondAlertSwitches", "capability.switch",
                   title: "Second-announcement virtual SWITCH(es) to turn on", multiple: true, required: false
             input "nagAlertContacts", "capability.contactSensor",
-                  title: "Feed-the-dog nag virtual CONTACT(s) to open", multiple: true, required: false
+                  title: "Extra feed-the-dog nag CONTACT(s) to open (optional)", multiple: true, required: false
             input "nagAlertSwitches", "capability.switch",
                   title: "Feed-the-dog nag virtual SWITCH(es) to turn on", multiple: true, required: false
             input "alertSeconds", "number", title: "Auto-reset those virtual devices after (seconds)",
@@ -190,6 +205,7 @@ def updated() {
     statusSwitches?.each { subscribe(it, "switch.on", "statusRequestHandler") }
 
     manageStatusDevice()
+    manageAlertDevices()
 
     if (remindWhenBack) {
         presenceSensors?.each { subscribe(it, "presence.present", "backHomeHandler") }
@@ -212,6 +228,44 @@ def updated() {
 }
 
 private String statusDni() { "dogfeeding-${app.id}" }
+
+private String alertDni(String key) { "dogfeeding-${app.id}-${key}" }
+
+private def alertChild(String key) { getChildDevice(alertDni(key)) }
+
+/** The three Alexa-Routine trigger devices this app can create for itself. */
+private Map alertDeviceSpecs() {
+    String who = dogName?.trim() ?: "Dog"
+    return ["walk1": "${who} Out Reminder 1",
+            "walk2": "${who} Out Reminder 2",
+            "nag"  : "Feed ${who}"]
+}
+
+private String alertDeviceSummary() {
+    return alertDeviceSpecs().collect { key, label ->
+        def cd = alertChild(key)
+        cd ? "&bull; <b>${cd.displayName}</b> — ready to share to Alexa"
+           : "&bull; ${label} — will be created when you hit Done"
+    }.join("<br>")
+}
+
+private void manageAlertDevices() {
+    alertDeviceSpecs().each { key, label ->
+        def cd = alertChild(key)
+        if (createAlertDevices && !cd) {
+            try {
+                addChildDevice("hubitat", "Virtual Contact Sensor", alertDni(key),
+                               [name: "Virtual Contact Sensor", label: label, isComponent: false])
+                log.info "Created Alexa trigger device '${label}'."
+            } catch (e) {
+                log.error "Could not create '${label}': ${e.message}"
+            }
+        } else if (!createAlertDevices && cd) {
+            deleteChildDevice(alertDni(key))
+            log.info "Removed Alexa trigger device '${label}'."
+        }
+    }
+}
 
 /** Create or remove the companion child device to match the preference. */
 private void manageStatusDevice() {
@@ -284,14 +338,24 @@ def letOutHandler(evt) {
 
 def firstReminder() {
     state.walksPending = ((state.walksPending ?: 1) as Integer) - 1
-    announce(render(firstMessage ?: "Time to take %dog% out."), firstAlertContacts, firstAlertSwitches)
+    announce(render(firstMessage ?: "Time to take %dog% out."),
+             withAlertChild(firstAlertContacts, "walk1"), firstAlertSwitches)
     publishStatus(state.fedStatus)
 }
 
 def secondReminder() {
     state.walksPending = 0
-    announce(render(secondMessage ?: "Time to take %dog% out."), secondAlertContacts, secondAlertSwitches)
+    announce(render(secondMessage ?: "Time to take %dog% out."),
+             withAlertChild(secondAlertContacts, "walk2"), secondAlertSwitches)
     publishStatus(state.fedStatus)
+}
+
+/** The user's chosen contacts plus this app's own trigger device for that slot. */
+private List withAlertChild(def contacts, String key) {
+    List out = (contacts ?: []) as List
+    def cd = alertChild(key)
+    if (cd) out << cd
+    return out
 }
 
 // ------------------------------------------------ child device callbacks
@@ -347,7 +411,8 @@ private void nagIfUnfed(String meal) {
         }
         return
     }
-    announce(render(nagMessage ?: "Don't forget to feed %dog%"), nagAlertContacts, nagAlertSwitches)
+    announce(render(nagMessage ?: "Don't forget to feed %dog%"),
+             withAlertChild(nagAlertContacts, "nag"), nagAlertSwitches)
 }
 
 def backHomeHandler(evt) { deferredNag() }
@@ -359,7 +424,8 @@ private void deferredNag() {
     if (!someoneAround()) return
     if (!state.pendingMeal) { state.remindWhenBack = false; return }
     state.remindWhenBack = false
-    announce(render(nagMessage ?: "Don't forget to feed %dog%"), nagAlertContacts, nagAlertSwitches)
+    announce(render(nagMessage ?: "Don't forget to feed %dog%"),
+             withAlertChild(nagAlertContacts, "nag"), nagAlertSwitches)
 }
 
 private boolean someoneAround() {
@@ -393,6 +459,21 @@ private void publishStatus(String status) {
 
 private void announce(String msg, def contacts, def switches) {
     log.info "Announce: ${msg}"
+    audioDevices?.each { d ->
+        try {
+            if (speechVolume != null && d.hasCommand("playTextAndRestore")) {
+                d.playTextAndRestore(msg, speechVolume as Integer)
+            } else if (d.hasCommand("playTextAndRestore")) {
+                d.playTextAndRestore(msg)
+            } else if (d.hasCommand("playText")) {
+                d.playText(msg)
+            } else {
+                d.speak(msg)
+            }
+        } catch (e) {
+            log.warn "Audio notification failed on ${d.displayName}: ${e.message}"
+        }
+    }
     speechDevices?.each { d ->
         try {
             if (speechVolume != null && d.hasCommand("setVolumeSpeakAndRestore")) {
@@ -432,7 +513,9 @@ def resetAlerts() {
 }
 
 private List allAlertContacts() {
-    return ((firstAlertContacts ?: []) + (secondAlertContacts ?: []) + (nagAlertContacts ?: [])).unique { it.id }
+    List children = alertDeviceSpecs().keySet().collect { alertChild(it) }.findAll { it }
+    return ((firstAlertContacts ?: []) + (secondAlertContacts ?: []) + (nagAlertContacts ?: []) + children)
+           .unique { it.id }
 }
 
 private List allAlertSwitches() {

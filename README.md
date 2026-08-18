@@ -61,23 +61,34 @@ person walks through. Two guards handle that: the signal is ignored inside the
 walk reminder is pending. The device's `Let out` button always counts, grace
 window or not.
 
-## Getting Alexa to speak
+## Getting it spoken out loud
 
-**Option A — Echo Speaks (recommended).** Install Echo Speaks from HPM and pair
-it. Each Echo becomes a `speechSynthesis` device; select them under
-*Alexa / speech output → TTS speakers*. The app sends the real message text and
-uses `playAnnouncement()` when the device supports it. Set *Speak at this volume
-and restore* if you want announcements louder than whatever is playing.
+**Option A — Sonos or any `audioNotification` speaker (recommended).** Fully
+local: no Amazon login, no cookie, nothing that expires. Pick the players under
+*Speech output → Sonos / audio-notification speakers*. The app calls
+`playTextAndRestore()`, so the real text is spoken and whatever was playing comes
+back. Set *Speak at this volume and restore* to be heard over music.
 
-**Option B — Alexa Routines (no Echo Speaks).** Create a **Virtual Contact
-Sensor** per message (e.g. `Dog Out Reminder 1`, `Dog Out Reminder 2`,
-`Feed The Dogs`), expose them in the Hubitat Amazon Alexa Skill app, then in the
-Alexa app build a Routine: *When → contact opens → Alexa Says → "Take the dog
-out."* Select each virtual in the matching field of section 5. They auto-reset
-after *Auto-reset those virtual devices after (seconds)*.
+**Option B — Echo Speaks.** Each Echo becomes a `speechSynthesis` device; select
+them under *TTS speakers*. Same dynamic text, but Echo Speaks authenticates with
+a scraped Amazon cookie that breaks every few months and has to be refreshed — if
+Echo Speaks shows no child devices, that is what happened.
 
-Both options can run at once. Push notifications to the Hubitat mobile app are
-independent of either.
+**Option C — Amazon Echo Skill + Alexa Routines.** Zero maintenance, fixed text.
+Switch on *Create three virtual contact sensors for Alexa Routines* and the app
+creates `<Dog> Out Reminder 1`, `<Dog> Out Reminder 2` and `Feed <Dog>` for you.
+Then, once:
+
+1. Hubitat → **Apps → Amazon Echo Skill** → add those three devices → Done.
+2. Alexa app → **More → Routines → +** → *When: Smart Home → <that contact
+   sensor> → opens* → *Add action: Alexa Says* (or **Announcement**) → type the
+   phrase → pick the Echos → Save. Repeat for the other two.
+
+They reset themselves after *Auto-reset those virtual devices after (seconds)*,
+so they are ready to fire again.
+
+Any combination can run at once — A for the real wording, C as the backup that
+keeps working when a cookie dies. Push notifications are independent of all three.
 
 ## Install
 
@@ -94,13 +105,17 @@ App**) — the child device cannot be created until the driver exists.
 
 ## Setup checklist
 
-- [ ] Virtual switch `Dog Fed` (Virtual Switch driver) — for "Alexa, turn on Dog Fed"
-- [ ] Virtual switch `Dog Let Out` — optional, cancels pending announcements
-- [ ] Virtual contacts for Alexa Routines — only if not using Echo Speaks
-- [ ] Hub Variable (String) named e.g. `DogLastFed` — optional, for dashboards
+The app creates every device it needs — you do not have to add virtual devices by
+hand.
+
+- [ ] Bowl sensor and/or an existing `Dog Fed` virtual switch as the trigger
 - [ ] Breakfast/dinner reset times (webCoRE used 12:01 AM and 12:01 PM)
 - [ ] Nag times (webCoRE used 7:30 AM and 6:00 PM)
 - [ ] Presence sensors and/or skipped modes for the "nobody home" case
+- [ ] Motion sensor on the way out (garage) as the let-out signal
+- [ ] Speakers — Sonos preferred, see the options above
+- [ ] If using Alexa Routines: share the three created contacts to the Amazon
+      Echo Skill and build one Routine each
 
 ## Notes / gotchas
 
