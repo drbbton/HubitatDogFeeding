@@ -1,0 +1,13 @@
+{
+    "author": "drbbton",
+    "gitHubUrl": "https://github.com/drbbton",
+    "payPalUrl": "",
+    "packages": [
+        {
+            "name": "Dog Feeding & Walk Reminder",
+            "category": "Convenience",
+            "location": "https://raw.githubusercontent.com/drbbton/HubitatDogFeeding/main/packageManifest.json",
+            "description": "Track when the dog was fed, nag at meal times, and announce on Alexa to take him out afterward."
+        }
+    ]
+}
