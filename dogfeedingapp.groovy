@@ -18,8 +18,11 @@
  *       (motion, door contact, switch, or the child device's button).
  *
  *  Speech options, best first
- *    - Sonos / any audioNotification speaker: local, no cloud login, speaks the
- *      real text and restores whatever was playing. Nothing to re-authorize.
+ *    - Sonos / any music player: local, no cloud login, speaks the real text and
+ *      restores whatever was playing. Nothing to re-authorize. Note the Sonos
+ *      Player driver declares MusicPlayer (not AudioNotification) and offers
+ *      playTextAndRestore() as a custom command, so speakOn() picks the best
+ *      available command per device rather than trusting one capability.
  *    - Echo Speaks devices: also speak the real text, but depend on an Amazon
  *      cookie that expires periodically.
  *    - Amazon Echo Skill + Alexa Routines: the app can create three virtual
@@ -115,16 +118,21 @@ def mainPage() {
                   defaultValue: 5, required: true
         }
         section("<b>5. Speech output</b>") {
-            input "audioDevices", "capability.audioNotification",
-                  title: "<b>Sonos / audio-notification speakers</b> — spoken locally, no cloud login, " +
-                         "interrupts music and restores it",
+            input "musicDevices", "capability.musicPlayer",
+                  title: "<b>Sonos and other music players</b> — spoken locally, no cloud login. Note the " +
+                         "Sonos Player driver reports MusicPlayer, not AudioNotification, which is why Sonos " +
+                         "does not appear in the next two fields.",
                   multiple: true, required: false
+            input "audioDevices", "capability.audioNotification",
+                  title: "Audio-notification speakers (Chromecast, etc.)", multiple: true, required: false
             input "speechDevices", "capability.speechSynthesis",
-                  title: "TTS speakers — Echo Speaks devices, Chromecast, etc.", multiple: true, required: false
+                  title: "TTS speakers — Echo Speaks devices, etc.", multiple: true, required: false
             input "useAnnouncement", "bool",
-                  title: "Use playAnnouncement() when the device supports it (Echo Speaks)", defaultValue: true
+                  title: "Prefer playAnnouncement() when a device supports it (Echo Speaks)", defaultValue: true
             input "speechVolume", "number",
-                  title: "Speak at this volume and restore (blank = leave volume alone)", required: false
+                  title: "Speak at this volume and restore what was playing (blank = leave volume alone)",
+                  required: false
+            paragraph "Picking the same speaker in more than one field is harmless — it is only spoken to once."
             input "createAlertDevices", "bool",
                   title: "<b>Create three virtual contact sensors for Alexa Routines</b> — one per phrase " +
                          "(first walk, second walk, feed the dog). Share them to the Amazon Echo Skill, then " +
@@ -457,36 +465,44 @@ private void publishStatus(String status) {
 
 // ---------------------------------------------------------------- outputs
 
+/** Every selected speaker, each one only once even if picked in several fields. */
+private List speakerPool() {
+    return ((musicDevices ?: []) + (audioDevices ?: []) + (speechDevices ?: [])).unique { it.id }
+}
+
+/**
+ * Speak on one device using the best command it actually has. Drivers disagree
+ * wildly here: Sonos Player offers playTextAndRestore(text, volume) as a custom
+ * command (it restores whatever was playing), Echo Speaks offers
+ * playAnnouncement()/setVolumeSpeakAndRestore(), and the bare SpeechSynthesis
+ * contract only guarantees speak().
+ */
+private void speakOn(def d, String msg) {
+    try {
+        Integer vol = (speechVolume != null) ? speechVolume as Integer : null
+        if (vol != null && d.hasCommand("playTextAndRestore")) {
+            d.playTextAndRestore(msg, vol)
+        } else if (vol != null && d.hasCommand("setVolumeSpeakAndRestore")) {
+            d.setVolumeSpeakAndRestore(vol, msg)
+        } else if (useAnnouncement && d.hasCommand("playAnnouncement")) {
+            d.playAnnouncement(msg)
+        } else if (d.hasCommand("playTextAndRestore")) {
+            d.playTextAndRestore(msg)
+        } else if (d.hasCommand("playText")) {
+            d.playText(msg)
+        } else if (d.hasCommand("speak")) {
+            d.speak(msg)
+        } else {
+            log.warn "${d.displayName} has no usable speech command — skipped."
+        }
+    } catch (e) {
+        log.warn "Speech failed on ${d.displayName}: ${e.message}"
+    }
+}
+
 private void announce(String msg, def contacts, def switches) {
     log.info "Announce: ${msg}"
-    audioDevices?.each { d ->
-        try {
-            if (speechVolume != null && d.hasCommand("playTextAndRestore")) {
-                d.playTextAndRestore(msg, speechVolume as Integer)
-            } else if (d.hasCommand("playTextAndRestore")) {
-                d.playTextAndRestore(msg)
-            } else if (d.hasCommand("playText")) {
-                d.playText(msg)
-            } else {
-                d.speak(msg)
-            }
-        } catch (e) {
-            log.warn "Audio notification failed on ${d.displayName}: ${e.message}"
-        }
-    }
-    speechDevices?.each { d ->
-        try {
-            if (speechVolume != null && d.hasCommand("setVolumeSpeakAndRestore")) {
-                d.setVolumeSpeakAndRestore(speechVolume as Integer, msg)
-            } else if (useAnnouncement && d.hasCommand("playAnnouncement")) {
-                d.playAnnouncement(msg)
-            } else {
-                d.speak(msg)
-            }
-        } catch (e) {
-            log.warn "Speech failed on ${d.displayName}: ${e.message}"
-        }
-    }
+    speakerPool().each { d -> speakOn(d, msg) }
     notifyDevices?.each { it.deviceNotification(msg) }
     contacts?.each { d ->
         if (d.hasCommand("open")) d.open()

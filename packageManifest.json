@@ -1,10 +1,10 @@
 {
     "packageName": "Dog Feeding & Walk Reminder",
     "author": "drbbton",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "minimumHEVersion": "2.3.4",
     "dateReleased": "2026-08-18",
-    "releaseNotes": "Initial release. Tracks when the dog was fed, resets to a breakfast/dinner 'owed' status twice a day, nags at configurable meal times (deferring until someone is home), and announces on Alexa or any TTS speaker at two configurable offsets after feeding to take the dog out. Includes a companion 'Dog Feeding Status' device for Dashboard tiles and Alexa/HomeKit, plus motion-sensor cancellation of pending walk reminders.",
+    "releaseNotes": "1.0.1 - select Sonos by MusicPlayer capability. The Sonos Player driver does not declare AudioNotification, so it never appeared in the audio-notification picker; speech now goes through one deduplicated speaker list that picks the best command each device actually has (playTextAndRestore / playAnnouncement / setVolumeSpeakAndRestore / playText / speak).\n\n1.0.0 - initial release.",
     "documentationLink": "https://github.com/drbbton/HubitatDogFeeding/blob/main/README.md",
     "communityLink": "https://github.com/drbbton/HubitatDogFeeding",
     "apps": [
@@ -15,7 +15,7 @@
             "location": "https://raw.githubusercontent.com/drbbton/HubitatDogFeeding/main/dogfeedingapp.groovy",
             "required": true,
             "oauth": false,
-            "version": "1.0.0"
+            "version": "1.0.1"
         }
     ],
     "drivers": [

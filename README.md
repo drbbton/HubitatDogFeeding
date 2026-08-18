@@ -63,11 +63,19 @@ window or not.
 
 ## Getting it spoken out loud
 
-**Option A — Sonos or any `audioNotification` speaker (recommended).** Fully
-local: no Amazon login, no cookie, nothing that expires. Pick the players under
-*Speech output → Sonos / audio-notification speakers*. The app calls
-`playTextAndRestore()`, so the real text is spoken and whatever was playing comes
-back. Set *Speak at this volume and restore* to be heard over music.
+**Option A — Sonos or any music player (recommended).** Fully local: no Amazon
+login, no cookie, nothing that expires. Pick the players under *Speech output →
+Sonos and other music players*. The app calls `playTextAndRestore()`, so the real
+text is spoken and whatever was playing comes back. Set *Speak at this volume and
+restore* to be heard over music.
+
+> Sonos is selected by the **MusicPlayer** capability, not AudioNotification. The
+> Hubitat *Sonos Player* driver declares MusicPlayer and exposes
+> `playTextAndRestore(text, volume)` as a custom command, so a
+> `capability.audioNotification` picker comes up empty on a hub full of Sonos
+> gear. Every selected speaker is spoken to exactly once — `speakOn()` picks the
+> best command that device actually has, so mixed Sonos/Echo/Chromecast setups
+> work without per-device configuration.
 
 **Option B — Echo Speaks.** Each Echo becomes a `speechSynthesis` device; select
 them under *TTS speakers*. Same dynamic text, but Echo Speaks authenticates with
