@@ -136,6 +136,15 @@ def mainPage() {
                   title: "Speak at this volume and restore what was playing (0 = do not touch the volume)",
                   defaultValue: 35, required: false
             paragraph "Picking the same speaker in more than one field is harmless — it is only spoken to once."
+            input "releaseAfterSpeaking", "bool",
+                  title: "<b>Release the speaker afterwards</b> — some drivers (Sonos Player included) leave the " +
+                         "player parked on the TTS clip at announcement volume when nothing was playing before, " +
+                         "because they record no source URI to return to. This puts the previous source and " +
+                         "volume back.",
+                  defaultValue: true
+            input "releaseSeconds", "number",
+                  title: "Wait this many seconds before releasing — must be longer than the spoken message",
+                  defaultValue: 15, required: true
             input "btnTestSpeech", "button", title: "🔊 Test speech now"
             paragraph speakerReport()
             input "createAlertDevices", "bool",
@@ -487,6 +496,7 @@ private List speakerPool() {
 private String speakOn(def d, String msg) {
     try {
         Integer vol = volumeSetting()
+        rememberSource(d)
         if (vol && d.hasCommand("playTextAndRestore")) {
             d.playTextAndRestore(msg, vol)
             return "playTextAndRestore at volume ${vol}"
@@ -508,6 +518,79 @@ private String speakOn(def d, String msg) {
     } catch (e) {
         log.warn "Speech failed on ${d.displayName}: ${e.message}"
         return "FAILED — ${e.message}"
+    }
+}
+
+// ------------------------------------------------------- releasing speakers
+
+/**
+ * Note what a speaker was playing, and how loudly, just before we talk over it.
+ *
+ * The Hubitat Sonos Player driver stores a restore level and track number but
+ * not a source URI (restoreURI stays 0), so when nothing was playing before the
+ * announcement it has nothing to return to: the player is left sitting on the
+ * hub's /tts/*.mp3 file at announcement volume, and on a soundbar that means the
+ * TV audio never comes back. Capturing the URI ourselves is what makes the
+ * release in releaseSpeakers() possible.
+ */
+private void rememberSource(def d) {
+    if (!releaseAfterSpeaking) return
+    try {
+        String uri = null
+        def td = d.currentValue("trackData")
+        if (td) {
+            def j = new groovy.json.JsonSlurper().parseText(td.toString())
+            uri = j.transportUri ?: j.uri ?: j.trackUri
+        }
+        if (uri && uri.contains("/tts/")) uri = null      // already parked on a clip
+        Integer level = (d.currentValue("level") ?: d.currentValue("volume")) as Integer
+        Map pending = (state.pendingRelease ?: [:]) as Map
+        pending["${d.id}"] = [uri: uri, level: level]
+        state.pendingRelease = pending
+        runIn(((releaseSeconds ?: 15) as Integer), "releaseSpeakers", [overwrite: true])
+    } catch (e) {
+        if (logEnable) log.debug "Could not read the current source on ${d.displayName}: ${e.message}"
+    }
+}
+
+/**
+ * Put each speaker back, but only if it is still parked on the announcement. A
+ * driver that restored playback on its own is left alone.
+ */
+def releaseSpeakers() {
+    Map pending = (state.pendingRelease ?: [:]) as Map
+    state.pendingRelease = [:]
+    pending.each { idStr, saved ->
+        def d = speakerPool().find { "${it.id}" == "${idStr}" }
+        if (!d) return
+        try {
+            if (!parkedOnClip(d)) {
+                if (logEnable) log.debug "${d.displayName} resumed on its own — leaving it alone."
+                return
+            }
+            String uri = saved?.uri
+            if (uri && d.hasCommand("restoreTrack")) {
+                d.restoreTrack(uri)
+                log.info "Released ${d.displayName} back to its previous source."
+            } else if (d.hasCommand("stop")) {
+                d.stop()
+                log.info "Released ${d.displayName} (stopped the clip; it had no previous source)."
+            }
+            Integer level = saved?.level as Integer
+            if (level != null && volumeSetting() && d.hasCommand("setLevel")) d.setLevel(level)
+        } catch (e) {
+            log.warn "Could not release ${d.displayName}: ${e.message}"
+        }
+    }
+}
+
+/** True when the speaker's current track is still the hub's TTS clip. */
+private boolean parkedOnClip(def d) {
+    try {
+        def td = d.currentValue("trackData")
+        return td ? td.toString().contains("/tts/") : false
+    } catch (ignored) {
+        return false
     }
 }
 
