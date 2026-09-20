@@ -215,6 +215,13 @@ def updated() {
     unschedule()
     removeAllInUseGlobalVar()
 
+    // 1.3.0: swap the pre-1.3 default template for the shorter one. Only touches
+    // installs still on the old default, so a customised string is left alone.
+    if (fedStatusText?.trim() == "%dog% was fed on %day% at %time%") {
+        app.updateSetting("fedStatusText", [value: "Fed %day% @ %time%", type: "text"])
+        log.info "Status template updated to the 1.3.0 default: Fed %day% @ %time%"
+    }
+
     bowlContacts?.each { subscribe(it, "contact.open", "fedHandler") }
     bowlAccels?.each  { subscribe(it, "acceleration.active", "fedHandler") }
     bowlTilts?.each   { subscribe(it, "threeAxis", "fedHandler") }
