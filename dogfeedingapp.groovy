@@ -252,7 +252,9 @@ def updated() {
     scheduleDaily(breakfastNagTime, "breakfastNag")
     scheduleDaily(dinnerNagTime, "dinnerNag")
 
-    publishStatus(state.fedStatus ?: pendingTextForNow())
+    // Re-render with the current templates so a wording change shows up as soon
+    // as Done is clicked, rather than at the next feeding or meal reset.
+    publishStatus(currentStatusText())
     if (logEnable) log.debug "Updated. Announcements at +${firstMinutes}/+${secondMinutes} min, cooldown ${cooldownMinutes} min."
 }
 
@@ -702,6 +704,14 @@ private List allAlertSwitches() {
 
 private void resetFedSwitches() {
     fedSwitches?.each { if (it.currentValue("switch") == "on") it.off() }
+}
+
+/** The status string as it should read right now, built from the current templates. */
+private String currentStatusText() {
+    if (state.pendingMeal == "breakfast") return breakfastPending()
+    if (state.pendingMeal == "dinner")    return dinnerPending()
+    if (state.lastFed) return render(fedStatusText ?: "Fed %day% @ %time%", new Date(state.lastFed as Long))
+    return state.fedStatus ?: pendingTextForNow()
 }
 
 private String pendingTextForNow() {
