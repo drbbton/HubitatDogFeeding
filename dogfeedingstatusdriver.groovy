@@ -23,7 +23,7 @@ metadata {
         capability "Sensor"
         capability "Switch"          // on() = record a feeding, auto-returns to off
 
-        attribute "status", "string"        // "Rex was fed on Tuesday at 7:36 AM"
+        attribute "status", "string"        // "Fed Today @ 7:36am"
         attribute "lastFed", "string"       // ISO-ish local timestamp, or "never"
         attribute "pendingMeal", "enum", ["breakfast", "dinner", "none"]
         attribute "walksPending", "number"  // take-him-out announcements still scheduled

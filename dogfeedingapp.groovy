@@ -7,7 +7,7 @@
  *  What it does
  *    1. Watches a bowl sensor (tilt / vibration / three-axis) or a virtual "Dog
  *       Fed" switch and records WHEN he was fed, as a message-template status
- *       string ("Rex was fed on Tuesday at 7:36 AM"). Published to the app label,
+ *       string ("Fed Today @ 7:36am"). Published to the app label,
  *       a companion child device, and optionally a Hub Variable.
  *    2. Resets the status twice a day (default 12:01 AM / 12:01 PM) so the string
  *       always says which meal is still owed.
@@ -59,7 +59,7 @@ def mainPage() {
                   title: "Dog's name — use <b>%dog%</b> in any message below and it is swapped in",
                   required: false
             paragraph "Tokens available in every message field: <b>%dog%</b> (name, or \"the dog\" if blank), " +
-                      "<b>%day%</b> (day of week) and <b>%time%</b> (clock time) of the last feeding."
+                      "<b>%day%</b> (Today / Yesterday, otherwise the day of week) and <b>%time%</b> (clock time, e.g. 6:14am) of the last feeding."
         }
         section("<b>1. Feeding triggers</b>") {
             input "bowlContacts", "capability.contactSensor",
@@ -81,7 +81,7 @@ def mainPage() {
             input "dinnerResetTime", "time",
                   title: "Start of the dinner window — status resets to 'not had dinner'", required: true
             input "fedStatusText", "text", title: "Status text once fed",
-                  defaultValue: "%dog% was fed on %day% at %time%", required: true
+                  defaultValue: "Fed %day% @ %time%", required: true
             input "breakfastPendingText", "text", title: "Breakfast-owed status text",
                   defaultValue: "%dog% has not had breakfast", required: true
             input "dinnerPendingText", "text", title: "Dinner-owed status text",
@@ -330,7 +330,7 @@ def fedHandler(evt) {
     state.remindWhenBack = false
     state.pendingMeal = null
 
-    publishStatus(render(fedStatusText ?: "%dog% was fed on %day% at %time%", new Date(nowMs)))
+    publishStatus(render(fedStatusText ?: "Fed %day% @ %time%", new Date(nowMs)))
 
     state.walksPending = 2
     runIn(((firstMinutes ?: 15) as Integer) * 60, "firstReminder", [overwrite: true])
@@ -711,10 +711,23 @@ private String render(String template, Date when = null) {
     Date d = when ?: (state.lastFed ? new Date(state.lastFed as Long) : null)
     String out = template.replace("%dog%", (dogName?.trim() ?: "the dog"))
     if (d) {
-        out = out.replace("%day%", d.format("EEEE", location.timeZone))
-                 .replace("%time%", d.format("h:mm a", location.timeZone))
+        out = out.replace("%day%", relativeDay(d))
+                 .replace("%time%", d.format("h:mma", location.timeZone).toLowerCase())
     }
     return out
+}
+
+/**
+ * "Today" / "Yesterday" when the date falls on those calendar days (hub time zone),
+ * otherwise the day of week ("Tuesday"). Keeps the dashboard tile short.
+ */
+private String relativeDay(Date d) {
+    String fmt = "yyyy-MM-dd"
+    String that  = d.format(fmt, location.timeZone)
+    Date now = new Date()
+    if (that == now.format(fmt, location.timeZone)) return "Today"
+    if (that == new Date(now.time - 86400000L).format(fmt, location.timeZone)) return "Yesterday"
+    return d.format("EEEE", location.timeZone)
 }
 
 // Hub Variable rename/removal hook

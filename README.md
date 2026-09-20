@@ -12,10 +12,10 @@ through the same substitution:
 | Token | Becomes |
 |---|---|
 | `%dog%` | The dog's name, or `the dog` if the field is blank |
-| `%day%` | Day of week of the last feeding (e.g. `Tuesday`) |
-| `%time%` | Clock time of the last feeding (e.g. `7:36 AM`) |
+| `%day%` | `Today` or `Yesterday` when the last feeding was on those days, otherwise the day of week (e.g. `Tuesday`) |
+| `%time%` | Clock time of the last feeding (e.g. `7:36am`) |
 
-Defaults: `%dog% was fed on %day% at %time%`, `%dog% has not had breakfast`,
+Defaults: `Fed %day% @ %time%`, `%dog% has not had breakfast`,
 `Don't forget to feed %dog%`, `Time to take %dog% out. First trip after eating.`
 With two dogs, type `Rex and Sadie` as the name and edit the verbs in the
 message fields to match — every string is editable.
@@ -24,7 +24,7 @@ message fields to match — every string is editable.
 
 1. **Records the feeding.** Any of a bowl tilt/contact sensor, bowl vibration
    sensor, three-axis orientation sensor, virtual "Dog Fed" switch (Alexa/Siri/
-   dashboard), or a button sets the status to `Fed on Tuesday at 7:36 AM`.
+   dashboard), or a button sets the status to `Fed Today @ 7:36am`.
    Repeat triggers inside the cooldown window are ignored.
 2. **Resets the status twice a day.** At the breakfast reset time the status
    becomes `Dogs have not had breakfast`; at the dinner reset time,
@@ -46,7 +46,7 @@ pairing, no manual add. It gives you what a Hub Variable cannot:
 
 | | |
 |---|---|
-| `status` attribute | `Rex was fed on Tuesday at 7:36 AM` — use a Dashboard **Attribute** tile |
+| `status` attribute | `Fed Today @ 7:36am` — use a Dashboard **Attribute** tile |
 | `lastFed`, `pendingMeal`, `walksPending` | for tiles, rules, and event history |
 | `Fed` / `Let out` / `Speak status` commands | Dashboard buttons for the three manual actions |
 | Switch capability | share it to Alexa/HomeKit — "Alexa, turn on Rex Feeding Status" records a feeding, and "Alexa, is Rex Feeding Status on?" answers |
