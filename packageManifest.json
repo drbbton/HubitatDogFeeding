@@ -3,7 +3,7 @@
     "author": "drbbton",
     "version": "1.3.0",
     "minimumHEVersion": "2.3.4",
-    "dateReleased": "2026-08-18",
+    "dateReleased": "2026-09-19",
     "releaseNotes": "1.3.0 - shorter status text for dashboard tiles. Default is now 'Fed %day% @ %time%' (e.g. 'Fed Today @ 6:14am'); %day% renders Today / Yesterday when applicable, %time% is lowercase without a space. Existing installs keep their saved template - clear the 'Status text once fed' field in the app to pick up the new default.\n\n1.2.0 - release the speaker after an announcement. The Sonos Player driver records a restore level and track number but no source URI, so when nothing was playing beforehand it leaves the player sitting on the hub's /tts/ mp3 at announcement volume - on a soundbar the TV audio never comes back. The app now captures the source URI and volume before speaking and puts them back afterwards, but only if the player is still parked on the clip, so a driver that resumed playback on its own is left alone. Configurable delay, default 15s.\n\n1.1.0 - test speech button and silent-announcement diagnostics.\n\n1.0.1 - select Sonos by MusicPlayer capability.\n\n1.0.0 - initial release.",
     "documentationLink": "https://github.com/drbbton/HubitatDogFeeding/blob/main/README.md",
     "communityLink": "https://github.com/drbbton/HubitatDogFeeding",
